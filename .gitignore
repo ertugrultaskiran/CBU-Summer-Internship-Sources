@@ -1,0 +1,26 @@
+# Vendor dizini
+vendor/
+
+# Log dosyaları
+*.log
+logs/
+
+# Geçici dosyalar
+*.tmp
+*.temp
+
+# IDE dosyaları
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS dosyaları
+.DS_Store
+Thumbs.db
+
+# Config dosyaları (güvenlik için)
+config/config.php
+
+# Composer lock dosyası (opsiyonel)
+# composer.lock

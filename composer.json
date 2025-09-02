@@ -1,0 +1,12 @@
+{
+    "name": "youtube/comments-panel",
+    "description": "YouTube yorumlarını çeken işletme paneli",
+    "require": {
+        "google/apiclient": "^2.15"
+    },
+    "autoload": {
+        "psr-4": {
+            "App\\": "src/"
+        }
+    }
+}

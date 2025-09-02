@@ -1,0 +1,8 @@
+-- Video senkronizasyon tablosu
+CREATE TABLE IF NOT EXISTS video_sync (
+    video_id VARCHAR(20) PRIMARY KEY,
+    last_sync DATETIME NOT NULL,
+    comment_count INT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
