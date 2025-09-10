@@ -28,14 +28,7 @@ try {
         'current_time' => date('Y-m-d H:i:s'),
         'debug' => [
             'video_id' => $videoId,
-            'has_video_id' => !empty($videoId),
-            'last_check_time' => $lastCheck,
-            'current_time' => date('Y-m-d H:i:s'),
-            'time_diff_seconds' => strtotime(date('Y-m-d H:i:s')) - strtotime($lastCheck),
-            'is_channel_id' => $videoId ? (strlen($videoId) > 11) : false,
-            'recent_threshold' => date('Y-m-d H:i:s', strtotime('-5 minutes')),
-            'api_call_time' => date('Y-m-d H:i:s'),
-            'sync_method' => 'youtube_api'
+            'has_video_id' => !empty($videoId)
         ]
     ];
     
@@ -49,8 +42,8 @@ try {
                 $channelVideos = $youtube->getChannelAllVideos($videoId, 10);
                 
                 foreach ($channelVideos as $video) {
-                    // Her video için senkronizasyon yap - çok daha fazla yorum çek
-                    $currentComments = $youtube->getComments($video['id'], 200);
+                    // Her video için senkronizasyon yap
+                    $currentComments = $youtube->getComments($video['id'], 50);
                     
                     foreach ($currentComments as $comment) {
                         $comment['video_id'] = $video['id'];
@@ -68,27 +61,8 @@ try {
                         $existingComment = $checkStmt->fetch();
                         
                         if (!$existingComment) {
-                            // Kanal senkronizasyonunda da zaman kontrolü
-                            $commentTime = strtotime($comment['published_at']);
-                            $lastCheckTime = strtotime($lastCheck);
-                            
-                            // Kanal senkronizasyonu için de çok agresif yaklaşım
-                            $recentTimeThreshold = strtotime('-30 minutes');
-                            $veryRecentThreshold = strtotime('-2 minutes');
-                            
-                            // Veritabanında var mı kontrol et
-                            $existingCheck = $db->getConnection()->prepare("SELECT id FROM comments WHERE comment_id = ?");
-                            $existingCheck->execute([$comment['comment_id']]);
-                            $alreadyExists = $existingCheck->fetch();
-                            
-                            if (!$alreadyExists) {
-                                // Veritabanında yok = YENİ YORUM
-                                if ($db->saveComment($comment)) {
-                                    $response['new_comments'][] = $comment;
-                                }
-                            } else {
-                                // Veritabanında var, sadece güncelle
-                                $db->saveComment($comment);
+                            if ($db->saveComment($comment)) {
+                                $response['new_comments'][] = $comment;
                             }
                         }
                     }
@@ -105,12 +79,11 @@ try {
                     throw new Exception('Video bulunamadı');
                 }
                 
-                // YouTube'dan güncel yorumları al - çok daha fazla yorum çek
-                $currentComments = $youtube->getComments($videoId, 1000);
+                // YouTube'dan güncel yorumları al
+                $currentComments = $youtube->getComments($videoId, 300);
                 $currentCommentIds = array_column($currentComments, 'comment_id');
                 
                 $response['debug']['youtube_comments_count'] = count($currentComments);
-                $response['debug']['youtube_comment_ids'] = array_slice(array_column($currentComments, 'comment_id'), 0, 5); // İlk 5 yorum ID'si
                 
                 // Veritabanındaki bu videoya ait tüm yorumları al
                 $dbComments = $db->getCommentsByVideoId($videoId, 1000, 0);
@@ -157,45 +130,9 @@ try {
                             $response['updated_comments'][] = $comment;
                         }
                     } else {
-                        // Yeni yorum - hem published_at hem de son kontrol zamanını dikkate al
-                        $commentTime = strtotime($comment['published_at']);
-                        $lastCheckTime = strtotime($lastCheck);
-                        
-                        // YouTube API'sinde yeni yorumlar çok geç görünebilir
-                        // Çok daha agresif yaklaşım: Son 30 dakika içindeki tüm yorumları "yeni" kabul et
-                        $recentTimeThreshold = strtotime('-30 minutes');
-                        $veryRecentThreshold = strtotime('-2 minutes'); // Çok yakın zamandakiler kesin yeni
-                        
-                        // Önce veritabanında bu yorum var mı kontrol et
-                        $existingCheck = $db->getConnection()->prepare("SELECT id FROM comments WHERE comment_id = ?");
-                        $existingCheck->execute([$comment['comment_id']]);
-                        $alreadyExists = $existingCheck->fetch();
-                        
-                        // Debug için zaman bilgilerini ekle
-                        $response['debug']['comment_times'][] = [
-                            'comment_id' => substr($comment['comment_id'], -8),
-                            'published_at' => $comment['published_at'],
-                            'comment_time' => $commentTime,
-                            'last_check_time' => $lastCheckTime,
-                            'time_diff' => $commentTime - $lastCheckTime,
-                            'exists_in_db' => $alreadyExists ? 'yes' : 'no'
-                        ];
-                        
-                        if (!$alreadyExists) {
-                            // Veritabanında yok = YENİ YORUM (zaman kontrolü yapmıyoruz!)
-                            if ($db->saveComment($comment)) {
-                                $response['new_comments'][] = $comment;
-                                $response['debug']['new_comment_reason'] = 'not_in_db';
-                            }
-                        } else {
-                            // Veritabanında var, sadece güncelle (like_count vs. değişmiş olabilir)
-                            $db->saveComment($comment);
-                            
-                            // Ama eğer çok yakın zamandaysa güncelleme olarak işaretle
-                            if ($commentTime > $veryRecentThreshold) {
-                                $response['updated_comments'][] = $comment;
-                                $response['debug']['updated_comment_reason'] = 'very_recent_update';
-                            }
+                        // Yeni yorum - veritabanına kaydet
+                        if ($db->saveComment($comment)) {
+                            $response['new_comments'][] = $comment;
                         }
                     }
                 }
@@ -206,7 +143,7 @@ try {
         }
     }
     
-    // Genel yeni yorumlar (son kontrol zamanından sonra) - created_at alanına göre
+    // Genel yeni yorumlar (son kontrol zamanından sonra)
     if (empty($response['new_comments']) && !$videoId) {
         $sql = "SELECT * FROM comments 
                 WHERE created_at > :last_check 
@@ -218,35 +155,6 @@ try {
         $stmt->execute();
         
         $response['new_comments'] = $stmt->fetchAll();
-    }
-    
-    // Video ID varsa ama yeni yorum bulunamadıysa, created_at ile de kontrol et
-    if (empty($response['new_comments']) && $videoId) {
-        $isChannelId = (strlen($videoId) > 11);
-        
-        if ($isChannelId) {
-            $sql = "SELECT * FROM comments 
-                    WHERE channel_id = :channel_id AND created_at > :last_check 
-                    ORDER BY created_at DESC 
-                    LIMIT 50";
-            $stmt = $db->getConnection()->prepare($sql);
-            $stmt->bindValue(':channel_id', $videoId);
-        } else {
-            $sql = "SELECT * FROM comments 
-                    WHERE video_id = :video_id AND created_at > :last_check 
-                    ORDER BY created_at DESC 
-                    LIMIT 50";
-            $stmt = $db->getConnection()->prepare($sql);
-            $stmt->bindValue(':video_id', $videoId);
-        }
-        
-        $stmt->bindValue(':last_check', $lastCheck);
-        $stmt->execute();
-        
-        $dbNewComments = $stmt->fetchAll();
-        if (!empty($dbNewComments)) {
-            $response['new_comments'] = array_merge($response['new_comments'], $dbNewComments);
-        }
     }
     
     $response['total_changes'] = count($response['new_comments']) + 
@@ -262,3 +170,4 @@ try {
         'error' => $e->getMessage()
     ]);
 }
+

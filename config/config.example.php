@@ -10,3 +10,8 @@ define('DB_PASS', '');
 
 // Base URL
 define('BASE_URL', 'http://localhost/youtube-yorumlar/');
+
+// OAuth2 Configuration (Google Cloud Console'dan alınacak)
+// YouTube'a yorum yazmak için gerekli
+define('GOOGLE_CLIENT_ID', 'YOUR_GOOGLE_CLIENT_ID_HERE');
+define('GOOGLE_CLIENT_SECRET', 'YOUR_GOOGLE_CLIENT_SECRET_HERE');

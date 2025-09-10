@@ -24,3 +24,4 @@ config/config.php
 
 # Composer lock dosyası (opsiyonel)
 # composer.lock
+config/config.php
